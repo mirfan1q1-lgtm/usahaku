@@ -1,156 +1,333 @@
--- ===========================================
--- OrbWeb Studio Database Setup
--- Run this SQL in your Supabase SQL Editor
--- ===========================================
+-- OrbWeb Studio - Supabase schema setup (Idempotent & Free plan friendly)
+-- Jalankan di Supabase SQL Editor
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- 1) Extensions
+create extension if not exists pgcrypto;
 
--- ===========================================
--- TABLE CREATION (Order matters for foreign keys)
--- ===========================================
+-- 2) Enum Types
+-- Portfolio categories
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'portfolio_category') then
+    create type public.portfolio_category as enum ('landing', 'profile', 'portfolio');
+  end if;
+end $$;
 
--- Create services table
-CREATE TABLE IF NOT EXISTS services (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  price VARCHAR(100),
-  features TEXT[],
-  icon VARCHAR(255),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- Showcase categories
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'showcase_category') then
+    create type public.showcase_category as enum ('basic', 'premium', 'enterprise');
+  end if;
+end $$;
+
+-- Order status
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'order_status') then
+    create type public.order_status as enum ('pending', 'in-progress', 'completed', 'cancelled');
+  end if;
+end $$;
+
+-- 3) Tables
+-- portfolios
+create table if not exists public.portfolios (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text not null,
+  image_url text not null check (image_url ~* '^https?://'),
+  demo_url text null,
+  category public.portfolio_category not null,
+  created_at timestamptz not null default now()
 );
 
--- Create portfolios table
-CREATE TABLE IF NOT EXISTS portfolios (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
-  image_url VARCHAR(500) NOT NULL,
-  demo_url VARCHAR(500),
-  category VARCHAR(50) CHECK (category IN ('landing', 'profile', 'portfolio')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- showcases
+create table if not exists public.showcases (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text not null,
+  image_url text not null check (image_url ~* '^https?://'),
+  demo_url text null,
+  price text not null,
+  features text[] not null default '{}'::text[],
+  category public.showcase_category not null,
+  is_featured boolean not null default false,
+  created_at timestamptz not null default now()
 );
 
--- Create showcases table FIRST (before orders table due to foreign key)
-CREATE TABLE IF NOT EXISTS showcases (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
-  image_url VARCHAR(500) NOT NULL,
-  demo_url VARCHAR(500),
-  price VARCHAR(100) NOT NULL,
-  features TEXT[],
-  category VARCHAR(50) CHECK (category IN ('basic', 'premium', 'enterprise')),
-  is_featured BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- services
+create table if not exists public.services (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text not null,
+  price text not null,
+  features text[] not null default '{}'::text[],
+  icon text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
--- Create orders table (references showcases)
-CREATE TABLE IF NOT EXISTS orders (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  customer_name VARCHAR(255) NOT NULL,
-  email VARCHAR(255) NOT NULL,
-  phone VARCHAR(50),
-  service_type VARCHAR(100) NOT NULL,
-  showcase_id UUID REFERENCES showcases(id),
-  message TEXT,
-  status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'in-progress', 'completed', 'cancelled')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- orders
+create table if not exists public.orders (
+  id uuid primary key default gen_random_uuid(),
+  customer_name text not null,
+  email text not null,
+  phone text not null,
+  service_type text not null check (service_type in ('showcase','custom')),
+  showcase_id uuid null references public.showcases(id) on delete set null,
+  message text not null,
+  status public.order_status not null default 'pending',
+  created_at timestamptz not null default now()
 );
 
--- ===========================================
--- ROW LEVEL SECURITY SETUP
--- ===========================================
+-- 4) Trigger untuk updated_at (services)
+create or replace function public.trigger_set_timestamp()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
 
--- Enable RLS on all tables
-ALTER TABLE services ENABLE ROW LEVEL SECURITY;
-ALTER TABLE portfolios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE showcases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+drop trigger if exists set_timestamp on public.services;
+create trigger set_timestamp
+before update on public.services
+for each row execute function public.trigger_set_timestamp();
 
--- Services policies (public read, authenticated write)
-CREATE POLICY "services_select_policy" ON services FOR SELECT USING (true);
-CREATE POLICY "services_insert_policy" ON services FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "services_update_policy" ON services FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "services_delete_policy" ON services FOR DELETE USING (auth.role() = 'authenticated');
+-- 5) Indexes
+create index if not exists idx_portfolios_created_at on public.portfolios (created_at);
+create index if not exists idx_showcases_created_at on public.showcases (created_at);
+create index if not exists idx_services_created_at on public.services (created_at);
+create index if not exists idx_orders_created_at on public.orders (created_at);
+create index if not exists idx_orders_showcase_id on public.orders (showcase_id);
 
--- Portfolios policies (public read, authenticated write)
-CREATE POLICY "portfolios_select_policy" ON portfolios FOR SELECT USING (true);
-CREATE POLICY "portfolios_insert_policy" ON portfolios FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "portfolios_update_policy" ON portfolios FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "portfolios_delete_policy" ON portfolios FOR DELETE USING (auth.role() = 'authenticated');
+-- 6) RLS (Row Level Security) + Policies
+-- Enable RLS
+alter table public.portfolios enable row level security;
+alter table public.showcases enable row level security;
+alter table public.services enable row level security;
+alter table public.orders enable row level security;
 
--- Showcases policies (public read, authenticated write)
-CREATE POLICY "showcases_select_policy" ON showcases FOR SELECT USING (true);
-CREATE POLICY "showcases_insert_policy" ON showcases FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "showcases_update_policy" ON showcases FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "showcases_delete_policy" ON showcases FOR DELETE USING (auth.role() = 'authenticated');
+-- portfolios policies
+do $$ begin
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='portfolios' and policyname='portfolios_select_public'
+  ) then
+    create policy portfolios_select_public on public.portfolios
+      for select to anon, authenticated
+      using (true);
+  end if;
 
--- Orders policies (public insert, authenticated read/write)
-CREATE POLICY "orders_insert_policy" ON orders FOR INSERT WITH CHECK (true);
-CREATE POLICY "orders_select_policy" ON orders FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "orders_update_policy" ON orders FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "orders_delete_policy" ON orders FOR DELETE USING (auth.role() = 'authenticated');
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='portfolios' and policyname='portfolios_modify_authenticated'
+  ) then
+    create policy portfolios_modify_authenticated on public.portfolios
+      for all to authenticated
+      using (true)
+      with check (true);
+  end if;
+end $$;
 
--- ===========================================
--- TRIGGERS FOR UPDATED_AT
--- ===========================================
+-- showcases policies
+do $$ begin
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='showcases' and policyname='showcases_select_public'
+  ) then
+    create policy showcases_select_public on public.showcases
+      for select to anon, authenticated
+      using (true);
+  end if;
 
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ language 'plpgsql';
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='showcases' and policyname='showcases_modify_authenticated'
+  ) then
+    create policy showcases_modify_authenticated on public.showcases
+      for all to authenticated
+      using (true)
+      with check (true);
+  end if;
+end $$;
 
-CREATE TRIGGER update_services_updated_at BEFORE UPDATE ON services
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- services policies
+do $$ begin
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='services' and policyname='services_select_public'
+  ) then
+    create policy services_select_public on public.services
+      for select to anon, authenticated
+      using (true);
+  end if;
 
-CREATE TRIGGER update_portfolios_updated_at BEFORE UPDATE ON portfolios
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='services' and policyname='services_modify_authenticated'
+  ) then
+    create policy services_modify_authenticated on public.services
+      for all to authenticated
+      using (true)
+      with check (true);
+  end if;
+end $$;
 
-CREATE TRIGGER update_showcases_updated_at BEFORE UPDATE ON showcases
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- orders policies
+do $$ begin
+  -- Public (anon + authenticated) boleh INSERT (Contact form)
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='orders' and policyname='orders_insert_public'
+  ) then
+    create policy orders_insert_public on public.orders
+      for insert to anon, authenticated
+      with check (true);
+  end if;
 
-CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  -- Hanya authenticated yang boleh SELECT/UPDATE/DELETE (Admin)
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='orders' and policyname='orders_read_authenticated'
+  ) then
+    create policy orders_read_authenticated on public.orders
+      for select to authenticated
+      using (true);
+  end if;
 
--- ===========================================
--- SAMPLE DATA
--- ===========================================
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='orders' and policyname='orders_update_authenticated'
+  ) then
+    create policy orders_update_authenticated on public.orders
+      for update to authenticated
+      using (true)
+      with check (true);
+  end if;
 
--- Insert sample services
-INSERT INTO services (name, description, price, features, icon) VALUES
-('Landing Page', 'Website landing page yang menarik untuk bisnis Anda', 'Rp 500.000', ARRAY['Responsive Design', 'SEO Optimized', 'Fast Loading', 'Contact Form'], '🚀'),
-('Profil Usaha', 'Website profil lengkap untuk memperkenalkan bisnis Anda', 'Rp 1.500.000', ARRAY['Company Profile', 'Services Showcase', 'Team Section', 'Contact Integration'], '🏢'),
-('Website Portfolio', 'Portfolio website untuk menampilkan karya dan jasa Anda', 'Rp 2.000.000', ARRAY['Project Gallery', 'Skills Section', 'Testimonials', 'Blog Integration'], '🎨');
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='orders' and policyname='orders_delete_authenticated'
+  ) then
+    create policy orders_delete_authenticated on public.orders
+      for delete to authenticated
+      using (true);
+  end if;
+end $$;
 
--- Insert sample portfolios
-INSERT INTO portfolios (title, description, image_url, demo_url, category) VALUES
-('Landing Page Kafe Modern', 'Website landing page untuk kafe dengan desain modern dan menarik', 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=500', 'https://example.com/demo1', 'landing'),
-('Profil Usaha Toko Online', 'Website profil untuk toko online dengan katalog produk', 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=500', 'https://example.com/demo2', 'profile'),
-('Portfolio Fotografer', 'Website portfolio untuk fotografer profesional', 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=500', 'https://example.com/demo3', 'portfolio');
+-- 7) Grant permissions untuk semua operasi CRUD
+-- Grant table permissions
+grant all on public.portfolios to anon, authenticated;
+grant all on public.showcases to anon, authenticated;
+grant all on public.services to anon, authenticated;
+grant all on public.orders to anon, authenticated;
 
--- Insert sample showcases
-INSERT INTO showcases (title, description, image_url, demo_url, price, features, category, is_featured) VALUES
-('Landing Page Basic', 'Template landing page sederhana untuk bisnis kecil', 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=500', 'https://example.com/showcase1', 'Rp 1.500.000', ARRAY['1 halaman responsif', 'Form kontak', 'SEO dasar', 'Mobile friendly'], 'basic', false),
-('Landing Page Premium', 'Template landing page premium dengan animasi dan fitur lengkap', 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500', 'https://example.com/showcase2', 'Rp 3.000.000', ARRAY['Animasi smooth', 'Multi section', 'CTA optimized', 'Analytics integration', 'SSL certificate'], 'premium', true),
-('Website Profil Basic', 'Template website profil untuk UMKM dengan 3 halaman', 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=500', 'https://example.com/showcase3', 'Rp 2.500.000', ARRAY['3 halaman lengkap', 'Galeri produk', 'Form kontak', 'SEO optimized', 'Mobile responsive'], 'basic', false),
-('Website Profil Premium', 'Template website profil premium dengan fitur lengkap', 'https://images.unsplash.com/photo-1486312338219-ce68e2c6f44d?w=500', 'https://example.com/showcase4', 'Rp 5.000.000', ARRAY['5+ halaman', 'CMS admin panel', 'E-commerce ready', 'Multi language', 'Advanced analytics'], 'premium', true),
-('Website Portfolio Basic', 'Template portfolio untuk freelancer dan kreator', 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=500', 'https://example.com/showcase5', 'Rp 2.000.000', ARRAY['Gallery interaktif', 'About & services', 'Contact form', 'Social media links'], 'basic', false),
-('Website Portfolio Enterprise', 'Template portfolio enterprise dengan fitur advanced', 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500', 'https://example.com/showcase6', 'Rp 8.000.000', ARRAY['Client showcase', 'Testimonial system', 'Blog integration', 'Advanced gallery', 'Custom animations', 'Performance optimized'], 'enterprise', true);
+-- Grant sequence permissions (untuk auto-increment/ID generation)
+grant usage, select on all sequences in schema public to anon, authenticated;
 
--- ===========================================
--- SETUP COMPLETE
--- ===========================================
+-- Grant schema permissions
+grant usage on schema public to anon, authenticated;
 
--- Next steps:
--- 1. Create admin user in Supabase Dashboard > Authentication > Users
--- 2. Login at /admin with the created credentials
--- 3. Start managing showcases, portfolios, and orders
+-- 8) Contact Information Table
+-- Enum Types untuk tipe kontak
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'contact_type') then
+    create type public.contact_type as enum (
+      'email', 
+      'phone', 
+      'whatsapp', 
+      'instagram', 
+      'facebook', 
+      'twitter', 
+      'linkedin', 
+      'youtube', 
+      'website', 
+      'address', 
+      'other'
+    );
+  end if;
+end $$;
+
+-- Table contact_information
+create table if not exists public.contact_information (
+  id uuid primary key default gen_random_uuid(),
+  type public.contact_type not null,
+  label text not null,
+  value text not null,
+  icon text null,
+  is_primary boolean not null default false,
+  is_active boolean not null default true,
+  order_index integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Trigger untuk updated_at
+drop trigger if exists set_timestamp_contact on public.contact_information;
+create trigger set_timestamp_contact
+before update on public.contact_information
+for each row execute function public.trigger_set_timestamp();
+
+-- Indexes
+create index if not exists idx_contact_info_type on public.contact_information (type);
+create index if not exists idx_contact_info_active on public.contact_information (is_active);
+create index if not exists idx_contact_info_order on public.contact_information (order_index);
+create index if not exists idx_contact_info_created_at on public.contact_information (created_at);
+
+-- RLS + Policies
+alter table public.contact_information enable row level security;
+
+-- Public read access
+do $$ begin
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='contact_information' and policyname='contact_info_select_public'
+  ) then
+    create policy contact_info_select_public on public.contact_information
+      for select to anon, authenticated
+      using (is_active = true);
+  end if;
+end $$;
+
+-- Authenticated CRUD access
+do $$ begin
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname='public' and tablename='contact_information' and policyname='contact_info_modify_authenticated'
+  ) then
+    create policy contact_info_modify_authenticated on public.contact_information
+      for all to authenticated
+      using (true)
+      with check (true);
+  end if;
+end $$;
+
+-- Grant permissions
+grant all on public.contact_information to anon, authenticated;
+
+-- Constraint untuk memastikan hanya satu primary per type
+create unique index if not exists idx_contact_info_primary_type 
+on public.contact_information (type) 
+where is_primary = true and is_active = true;
+
+-- 9) Seed data contoh untuk services
+-- Insert default services jika belum ada
+insert into public.services (name, description, price, features, icon) 
+select * from (values
+  ('Landing Page', 'Website satu halaman untuk fokus konversi dan call-to-action untuk meningkatkan leads', 'Rp 2.500.000', ARRAY['Desain modern & responsif','Form kontak terintegrasi','SEO basic optimization','Google Analytics setup','Social media integration','1x revisi design','Domain & hosting 1 tahun','SSL Certificate'], '🚀'),
+  ('Profil Usaha', 'Website lengkap multi-halaman untuk profil perusahaan dengan fitur comprehensive', 'Rp 4.500.000', ARRAY['5-7 halaman lengkap (Home, About, Services, Gallery, Contact)','Admin panel untuk update konten','Blog/artikel section','Galeri produk/layanan','Advanced SEO optimization','Contact forms multiple','2x revisi design','Domain & hosting 1 tahun','SSL Certificate','Google My Business setup'], '🏢'),
+  ('Website Portofolio', 'Showcase karya dan layanan dengan tampilan visual yang elegan dan professional', 'Rp 3.500.000', ARRAY['Gallery interaktif dengan lightbox','Project showcase pages','Testimonial section','About & contact pages','Mobile-optimized gallery','Social media integration','1x revisi design','Domain & hosting 1 tahun','SSL Certificate'], '🎨')
+) as v(name, description, price, features, icon)
+where not exists (select 1 from public.services limit 1);
+
+-- 10) Seed data contoh untuk contact information
+insert into public.contact_information (type, label, value, icon, is_primary, order_index) 
+select * from (values
+  ('email', 'Email Utama', 'info@orbwebstudio.com', '📧', true, 1),
+  ('phone', 'WhatsApp', '+62 812-3456-7890', '📱', true, 2),
+  ('instagram', 'Instagram', 'https://instagram.com/orbwebstudio', '📷', false, 3),
+  ('facebook', 'Facebook', 'https://facebook.com/orbwebstudio', '👥', false, 4),
+  ('website', 'Website', 'https://orbwebstudio.com', '🌐', false, 5),
+  ('address', 'Alamat', 'Jl. Contoh No. 123, Jakarta Selatan', '📍', false, 6)
+) as v(type, label, value, icon, is_primary, order_index)
+where not exists (select 1 from public.contact_information limit 1);

@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { supabase } from '../lib/supabase';
-import { Showcase } from '../types';
+import { Showcase, ContactInformation } from '../types';
 import { 
   MapPinIcon, 
   PhoneIcon, 
@@ -36,9 +36,12 @@ export const Contact: React.FC = () => {
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [showcases, setShowcases] = useState<Showcase[]>([]);
   const [showcasesLoading, setShowcasesLoading] = useState(false);
+  const [contacts, setContacts] = useState<ContactInformation[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
 
   useEffect(() => {
     fetchShowcases();
+    fetchContacts();
   }, []);
 
   const fetchShowcases = async () => {
@@ -58,12 +61,61 @@ export const Contact: React.FC = () => {
     }
   };
 
+  const fetchContacts = async () => {
+    try {
+      setContactsLoading(true);
+      const { data, error } = await supabase
+        .from('contact_information')
+        .select('*')
+        .eq('is_active', true)
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+      setContacts(data || []);
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+
   const serviceOptions = [
     { value: 'showcase', label: 'Template dari Etalase (Lihat /showcase)' },
     { value: 'custom', label: 'Custom Website (Konsultasi Gratis)' }
   ];
 
-  const contactInfo = [
+  // Helper function to get icon component based on contact type
+  const getContactIcon = (type: ContactInformation['type']) => {
+    switch (type) {
+      case 'email':
+        return <EnvelopeIcon className="h-6 w-6" />;
+      case 'phone':
+      case 'whatsapp':
+        return <PhoneIcon className="h-6 w-6" />;
+      case 'address':
+        return <MapPinIcon className="h-6 w-6" />;
+      default:
+        return <ClockIcon className="h-6 w-6" />;
+    }
+  };
+
+  // Helper function to format contact value for display
+  const formatContactValue = (contact: ContactInformation) => {
+    if (contact.type === 'email' && !contact.value.startsWith('mailto:')) {
+      return `mailto:${contact.value}`;
+    }
+    if ((contact.type === 'phone' || contact.type === 'whatsapp') && !contact.value.startsWith('tel:')) {
+      return `tel:${contact.value}`;
+    }
+    if (contact.type === 'whatsapp' && !contact.value.startsWith('https://wa.me/')) {
+      const cleanNumber = contact.value.replace(/[^\d]/g, '');
+      return `https://wa.me/${cleanNumber}`;
+    }
+    return contact.value;
+  };
+
+  // Fallback contact info if database is empty
+  const fallbackContactInfo = [
     {
       icon: <PhoneIcon className="h-6 w-6" />,
       title: 'Telepon',
@@ -233,21 +285,69 @@ export const Contact: React.FC = () => {
                 </h3>
               </CardHeader>
               <CardContent className="space-y-6">
-                {contactInfo.map((item, index) => (
-                  <div key={index} className="flex items-start space-x-4">
-                    <div className="text-blue-600">
-                      {item.icon}
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {item.title}
-                      </div>
-                      <div className="text-gray-600">
-                        {item.info}
-                      </div>
-                    </div>
+                {contactsLoading ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <p className="text-gray-600">Loading contact info...</p>
                   </div>
-                ))}
+                ) : contacts.length > 0 ? (
+                  contacts.map((contact) => (
+                    <div key={contact.id} className="flex items-start space-x-4">
+                      <div className="text-blue-600">
+                        {contact.icon ? (
+                          <span className="text-2xl">{contact.icon}</span>
+                        ) : (
+                          getContactIcon(contact.type)
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {contact.label}
+                        </div>
+                        <div className="text-gray-600">
+                          {contact.type === 'email' || contact.type === 'phone' || contact.type === 'whatsapp' ? (
+                            <a 
+                              href={formatContactValue(contact)}
+                              className="hover:text-blue-600 transition-colors"
+                              target={contact.type === 'whatsapp' ? '_blank' : undefined}
+                              rel={contact.type === 'whatsapp' ? 'noopener noreferrer' : undefined}
+                            >
+                              {contact.value}
+                            </a>
+                          ) : contact.type === 'website' || contact.type === 'instagram' || contact.type === 'facebook' || contact.type === 'twitter' || contact.type === 'linkedin' || contact.type === 'youtube' ? (
+                            <a 
+                              href={contact.value.startsWith('http') ? contact.value : `https://${contact.value}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-blue-600 transition-colors"
+                            >
+                              {contact.value}
+                            </a>
+                          ) : (
+                            contact.value
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  // Fallback to hardcoded data if no contacts from database
+                  fallbackContactInfo.map((item, index) => (
+                    <div key={index} className="flex items-start space-x-4">
+                      <div className="text-blue-600">
+                        {item.icon}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {item.title}
+                        </div>
+                        <div className="text-gray-600">
+                          {item.info}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
 

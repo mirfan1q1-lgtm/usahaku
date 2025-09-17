@@ -5,6 +5,8 @@ export interface Service {
   price: string;
   features: string[];
   icon: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Portfolio {
@@ -46,4 +48,17 @@ export interface Showcase {
   category: 'basic' | 'premium' | 'enterprise';
   is_featured: boolean;
   created_at: string;
+}
+
+export interface ContactInformation {
+  id: string;
+  type: 'email' | 'phone' | 'whatsapp' | 'instagram' | 'facebook' | 'twitter' | 'linkedin' | 'youtube' | 'website' | 'address' | 'other';
+  label: string;
+  value: string;
+  icon?: string;
+  is_primary: boolean;
+  is_active: boolean;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
 }

@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
-import { Portfolio, Order, Showcase } from '../types';
+import { Portfolio, Order, Showcase, Service, ContactInformation } from '../types';
 import { supabase } from '../lib/supabase';
 import { 
   PlusIcon, 
@@ -32,12 +32,32 @@ interface ShowcaseFormData {
   is_featured: boolean;
 }
 
+interface ServiceFormData {
+  name: string;
+  description: string;
+  price: string;
+  features: string[];
+  icon: string;
+}
+
+interface ContactFormData {
+  type: ContactInformation['type'];
+  label: string;
+  value: string;
+  icon: string;
+  is_primary: boolean;
+  is_active: boolean;
+  order_index: number;
+}
+
 export const Admin: React.FC = () => {
   const { user, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'portfolios' | 'orders' | 'showcases'>('portfolios');
+  const [activeTab, setActiveTab] = useState<'portfolios' | 'orders' | 'showcases' | 'services' | 'contacts'>('portfolios');
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [showcases, setShowcases] = useState<Showcase[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [contacts, setContacts] = useState<ContactInformation[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPortfolioForm, setShowPortfolioForm] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null);
@@ -60,26 +80,66 @@ export const Admin: React.FC = () => {
     category: 'basic',
     is_featured: false
   });
+  const [showServiceForm, setShowServiceForm] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [serviceForm, setServiceForm] = useState<ServiceFormData>({
+    name: '',
+    description: '',
+    price: '',
+    features: [],
+    icon: ''
+  });
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactInformation | null>(null);
+  const [contactForm, setContactForm] = useState<ContactFormData>({
+    type: 'email',
+    label: '',
+    value: '',
+    icon: '',
+    is_primary: false,
+    is_active: true,
+    order_index: 0
+  });
 
   const testDatabaseConnection = async () => {
     try {
       console.log('Testing database connection...');
 
-      // Test portfolios table
-      const { data: portfoliosData, error: portfoliosError } = await supabase
+      // Test portfolios table (count)
+      const { count: portfoliosCount, error: portfoliosError } = await supabase
         .from('portfolios')
-        .select('count')
-        .limit(1);
+        .select('*', { count: 'exact', head: true });
 
-      console.log('Portfolios test:', { portfoliosData, portfoliosError });
+      console.log('Portfolios test:', { portfoliosCount, portfoliosError });
 
-      // Test showcases table
-      const { data: showcasesData, error: showcasesError } = await supabase
+      // Test showcases table (count)
+      const { count: showcasesCount, error: showcasesError } = await supabase
         .from('showcases')
-        .select('count')
-        .limit(1);
+        .select('*', { count: 'exact', head: true });
 
-      console.log('Showcases test:', { showcasesData, showcasesError });
+      console.log('Showcases test:', { showcasesCount, showcasesError });
+
+      // Test services table (count)
+      const { count: servicesCount, error: servicesError } = await supabase
+        .from('services')
+        .select('*', { count: 'exact', head: true });
+
+      console.log('Services test:', { servicesCount, servicesError });
+
+      // Test orders table (count via GET to avoid HEAD 403 behind RLS)
+      const { count: ordersCount, error: ordersError } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact' })
+        .limit(0);
+
+      console.log('Orders test:', { ordersCount, ordersError });
+
+      // Test contact_information table (count)
+      const { count: contactsCount, error: contactsError } = await supabase
+        .from('contact_information')
+        .select('*', { count: 'exact', head: true });
+
+      console.log('Contacts test:', { contactsCount, contactsError });
 
       // Test authentication
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -102,10 +162,30 @@ export const Admin: React.FC = () => {
       fetchPortfolios();
       fetchOrders();
       fetchShowcases();
+      fetchServices();
+      fetchContacts();
     } else {
       console.log('No authenticated user found');
+      // Clear orders when user logs out
+      setOrders([]);
     }
   }, [user]);
+
+  // Add session refresh function
+  const refreshSession = async () => {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) {
+        console.error('Session refresh error:', error);
+        return false;
+      }
+      console.log('Session refreshed successfully');
+      return true;
+    } catch (error) {
+      console.error('Failed to refresh session:', error);
+      return false;
+    }
+  };
 
   const fetchPortfolios = async () => {
     try {
@@ -130,6 +210,34 @@ export const Admin: React.FC = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
+
+      // Check authentication status
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        throw new Error('Authentication session error');
+      }
+
+      if (!session) {
+        console.warn('No active session found, attempting to refresh...');
+        const refreshed = await refreshSession();
+        if (!refreshed) {
+          throw new Error('No active authentication session and refresh failed');
+        }
+        // Get the refreshed session
+        const { data: { session: newSession } } = await supabase.auth.getSession();
+        if (!newSession) {
+          throw new Error('Failed to get refreshed session');
+        }
+        console.log('Using refreshed session');
+      }
+
+      console.log('Fetching orders with session:', {
+        userId: session?.user?.id,
+        expiresAt: session?.expires_at
+      });
+
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -143,10 +251,34 @@ export const Admin: React.FC = () => {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error fetching orders:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
+        throw error;
+      }
+
+      console.log('Orders fetched successfully:', data?.length || 0, 'orders');
       setOrders(data || []);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
+    } catch (error: any) {
+      console.error('Error fetching orders:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint
+      });
+
+      // Show user-friendly error message
+      if (error?.code === '42501') {
+        alert('Permission denied. Please try logging out and logging back in.');
+      } else if (error?.message?.includes('authentication') || error?.message?.includes('session')) {
+        alert('Authentication error. Please refresh the page and log in again.');
+      } else {
+        alert('Failed to load orders. Please check the console for details.');
+      }
     } finally {
       setLoading(false);
     }
@@ -167,6 +299,46 @@ export const Admin: React.FC = () => {
       setShowcases(data || []);
     } catch (error) {
       console.error('Error fetching showcases:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchServices = async () => {
+    try {
+      setLoading(true);
+      console.log('Fetching services from database...');
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      console.log('Fetch services result:', { data, error, count: data?.length });
+
+      if (error) throw error;
+      setServices(data || []);
+    } catch (error) {
+      console.error('Error fetching services:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchContacts = async () => {
+    try {
+      setLoading(true);
+      console.log('Fetching contacts from database...');
+      const { data, error } = await supabase
+        .from('contact_information')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      console.log('Fetch contacts result:', { data, error, count: data?.length });
+
+      if (error) throw error;
+      setContacts(data || []);
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
     } finally {
       setLoading(false);
     }
@@ -441,6 +613,245 @@ export const Admin: React.FC = () => {
     }
   };
 
+  const handleServiceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (!serviceForm.name.trim()) {
+      alert('Nama layanan harus diisi');
+      return;
+    }
+    if (!serviceForm.description.trim()) {
+      alert('Deskripsi layanan harus diisi');
+      return;
+    }
+    if (!serviceForm.price.trim()) {
+      alert('Harga harus diisi');
+      return;
+    }
+    if (!serviceForm.icon.trim()) {
+      alert('Icon harus diisi');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('Starting service save operation...');
+      console.log('Current user:', user);
+      console.log('Service form data:', serviceForm);
+
+      if (editingService) {
+        console.log('Updating existing service:', editingService.id);
+        const { data, error } = await supabase
+          .from('services')
+          .update(serviceForm)
+          .eq('id', editingService.id);
+
+        console.log('Update result:', { data, error });
+        if (error) throw error;
+      } else {
+        console.log('Inserting new service...');
+        const { data, error } = await supabase
+          .from('services')
+          .insert([serviceForm]);
+
+        console.log('Insert result:', { data, error });
+        if (error) throw error;
+      }
+
+      setServiceForm({
+        name: '',
+        description: '',
+        price: '',
+        features: [],
+        icon: ''
+      });
+      setShowServiceForm(false);
+      setEditingService(null);
+      await fetchServices();
+      alert(editingService ? 'Layanan berhasil diupdate' : 'Layanan berhasil ditambahkan');
+    } catch (error: any) {
+      console.error('Error saving service:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint
+      });
+
+      let errorMessage = 'Terjadi kesalahan saat menyimpan layanan';
+      if (error?.message) {
+        errorMessage += `\nDetail: ${error.message}`;
+      }
+      if (error?.code) {
+        errorMessage += `\nKode error: ${error.code}`;
+      }
+      if (error?.details) {
+        errorMessage += `\nDetail teknis: ${error.details}`;
+      }
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditService = (service: Service) => {
+    setEditingService(service);
+    setServiceForm({
+      name: service.name,
+      description: service.description,
+      price: service.price,
+      features: service.features,
+      icon: service.icon
+    });
+    setShowServiceForm(true);
+  };
+
+  const handleDeleteService = async (id: string) => {
+    const service = services.find(s => s.id === id);
+    const confirmMessage = service
+      ? `Apakah Anda yakin ingin menghapus layanan "${service.name}"?`
+      : 'Apakah Anda yakin ingin menghapus layanan ini?';
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from('services')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      await fetchServices();
+      alert('Layanan berhasil dihapus');
+    } catch (error) {
+      console.error('Error deleting service:', error);
+      alert('Terjadi kesalahan saat menghapus layanan');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Contact Information CRUD functions
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (!contactForm.label.trim()) {
+      alert('Label kontak harus diisi');
+      return;
+    }
+    if (!contactForm.value.trim()) {
+      alert('Nilai kontak harus diisi');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('Starting contact save operation...');
+      console.log('Current user:', user);
+      console.log('Contact form data:', contactForm);
+
+      if (editingContact) {
+        console.log('Updating existing contact:', editingContact.id);
+        const { data, error } = await supabase
+          .from('contact_information')
+          .update(contactForm)
+          .eq('id', editingContact.id);
+
+        console.log('Update result:', { data, error });
+        if (error) throw error;
+      } else {
+        console.log('Inserting new contact...');
+        const { data, error } = await supabase
+          .from('contact_information')
+          .insert([contactForm]);
+
+        console.log('Insert result:', { data, error });
+        if (error) throw error;
+      }
+
+      setContactForm({
+        type: 'email',
+        label: '',
+        value: '',
+        icon: '',
+        is_primary: false,
+        is_active: true,
+        order_index: 0
+      });
+      setShowContactForm(false);
+      setEditingContact(null);
+      await fetchContacts();
+      alert(editingContact ? 'Kontak berhasil diupdate' : 'Kontak berhasil ditambahkan');
+    } catch (error: any) {
+      console.error('Error saving contact:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint
+      });
+
+      let errorMessage = 'Terjadi kesalahan saat menyimpan kontak';
+      if (error?.message) {
+        errorMessage += `\nDetail: ${error.message}`;
+      }
+      if (error?.code) {
+        errorMessage += `\nKode error: ${error.code}`;
+      }
+      if (error?.details) {
+        errorMessage += `\nDetail teknis: ${error.details}`;
+      }
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditContact = (contact: ContactInformation) => {
+    setEditingContact(contact);
+    setContactForm({
+      type: contact.type,
+      label: contact.label,
+      value: contact.value,
+      icon: contact.icon || '',
+      is_primary: contact.is_primary,
+      is_active: contact.is_active,
+      order_index: contact.order_index
+    });
+    setShowContactForm(true);
+  };
+
+  const handleDeleteContact = async (id: string) => {
+    const contact = contacts.find(c => c.id === id);
+    const confirmMessage = contact
+      ? `Apakah Anda yakin ingin menghapus kontak "${contact.label}"?`
+      : 'Apakah Anda yakin ingin menghapus kontak ini?';
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from('contact_information')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      await fetchContacts();
+      alert('Kontak berhasil dihapus');
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      alert('Terjadi kesalahan saat menghapus kontak');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -496,6 +907,26 @@ export const Admin: React.FC = () => {
               }`}
             >
               Etalase ({showcases.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('services')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'services'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Layanan ({services.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('contacts')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'contacts'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Kontak ({contacts.length})
             </button>
             <button
               onClick={() => setActiveTab('orders')}
@@ -784,20 +1215,79 @@ export const Admin: React.FC = () => {
                         required
                       />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-700">
-                        Fitur (pisahkan dengan koma)
+                        Fitur Template
                       </label>
-                      <textarea
-                        value={showcaseForm.features.join(', ')}
-                        onChange={(e) => setShowcaseForm(prev => ({
-                          ...prev,
-                          features: e.target.value.split(',').map(f => f.trim()).filter(f => f)
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                        rows={2}
-                        placeholder="Responsive Design, SEO Optimized, Fast Loading"
-                      />
+                      
+                      {/* Features List */}
+                      <div className="space-y-2">
+                        {showcaseForm.features.map((feature, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <Input
+                              value={feature}
+                              onChange={(e) => {
+                                const newFeatures = [...showcaseForm.features];
+                                newFeatures[index] = e.target.value;
+                                setShowcaseForm(prev => ({ ...prev, features: newFeatures }));
+                              }}
+                              placeholder={`Fitur ${index + 1}`}
+                              className="flex-1"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newFeatures = showcaseForm.features.filter((_, i) => i !== index);
+                                setShowcaseForm(prev => ({ ...prev, features: newFeatures }));
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              title="Hapus fitur"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Add Feature Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowcaseForm(prev => ({ 
+                            ...prev, 
+                            features: [...prev.features, ''] 
+                          }));
+                        }}
+                        className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        <span>Tambah Fitur</span>
+                      </button>
+                      
+                      {/* Alternative: Bulk Input */}
+                      <div className="border-t pt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Atau masukkan semua fitur sekaligus (pisahkan dengan koma atau baris baru):
+                        </label>
+                        <textarea
+                          value={showcaseForm.features.join(', ')}
+                          onChange={(e) => {
+                            // Support both comma and newline separation
+                            const input = e.target.value;
+                            const features = input
+                              .split(/[,\n]/)
+                              .map(f => f.trim())
+                              .filter(f => f);
+                            setShowcaseForm(prev => ({ ...prev, features }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                          placeholder="Responsive Design, SEO Optimized, Fast Loading"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Pisahkan fitur dengan koma (,) atau baris baru. Klik "Tambah Fitur" untuk input individual.
+                        </p>
+                      </div>
                     </div>
                     <Button type="submit" disabled={loading}>
                       {loading ? 'Menyimpan...' : editingShowcase ? 'Update' : 'Simpan'}
@@ -861,6 +1351,411 @@ export const Admin: React.FC = () => {
               <Card>
                 <CardContent className="text-center py-12">
                   <p className="text-gray-600">Belum ada etalase. Tambahkan etalase pertama Anda.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Services Tab */}
+        {activeTab === 'services' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Manage Layanan</h2>
+              <Button
+                onClick={() => setShowServiceForm(true)}
+                className="flex items-center space-x-2"
+              >
+                <PlusIcon className="h-4 w-4" />
+                <span>Tambah Layanan</span>
+              </Button>
+            </div>
+
+            {/* Service Form */}
+            {showServiceForm && (
+              <Card className="mb-8">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <h3 className="text-lg font-semibold">
+                    {editingService ? 'Edit Layanan' : 'Tambah Layanan'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowServiceForm(false);
+                      setEditingService(null);
+                      setServiceForm({
+                        name: '',
+                        description: '',
+                        price: '',
+                        features: [],
+                        icon: ''
+                      });
+                    }}
+                  >
+                    <XMarkIcon className="h-6 w-6 text-gray-400" />
+                  </button>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleServiceSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="Nama Layanan"
+                        value={serviceForm.name}
+                        onChange={(e) => setServiceForm(prev => ({ ...prev, name: e.target.value }))}
+                        required
+                      />
+                      <Input
+                        label="Harga"
+                        value={serviceForm.price}
+                        onChange={(e) => setServiceForm(prev => ({ ...prev, price: e.target.value }))}
+                        placeholder="Rp 1.500.000"
+                        required
+                      />
+                    </div>
+                    <Input
+                      label="Icon (Emoji atau Unicode)"
+                      value={serviceForm.icon}
+                      onChange={(e) => setServiceForm(prev => ({ ...prev, icon: e.target.value }))}
+                      placeholder="🚀 atau 🌐"
+                      required
+                    />
+                    <div className="space-y-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Deskripsi
+                      </label>
+                      <textarea
+                        value={serviceForm.description}
+                        onChange={(e) => setServiceForm(prev => ({ ...prev, description: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                        rows={3}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Fitur Layanan
+                      </label>
+                      
+                      {/* Features List */}
+                      <div className="space-y-2">
+                        {serviceForm.features.map((feature, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <Input
+                              value={feature}
+                              onChange={(e) => {
+                                const newFeatures = [...serviceForm.features];
+                                newFeatures[index] = e.target.value;
+                                setServiceForm(prev => ({ ...prev, features: newFeatures }));
+                              }}
+                              placeholder={`Fitur ${index + 1}`}
+                              className="flex-1"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newFeatures = serviceForm.features.filter((_, i) => i !== index);
+                                setServiceForm(prev => ({ ...prev, features: newFeatures }));
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              title="Hapus fitur"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Add Feature Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setServiceForm(prev => ({ 
+                            ...prev, 
+                            features: [...prev.features, ''] 
+                          }));
+                        }}
+                        className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        <span>Tambah Fitur</span>
+                      </button>
+                      
+                      {/* Alternative: Bulk Input */}
+                      <div className="border-t pt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Atau masukkan semua fitur sekaligus (pisahkan dengan koma atau baris baru):
+                        </label>
+                        <textarea
+                          value={serviceForm.features.join(', ')}
+                          onChange={(e) => {
+                            // Support both comma and newline separation
+                            const input = e.target.value;
+                            const features = input
+                              .split(/[,\n]/)
+                              .map(f => f.trim())
+                              .filter(f => f);
+                            setServiceForm(prev => ({ ...prev, features }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                          placeholder="Responsive Design, SEO Optimized, Fast Loading, Contact Form"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Pisahkan fitur dengan koma (,) atau baris baru. Klik "Tambah Fitur" untuk input individual.
+                        </p>
+                      </div>
+                    </div>
+                    <Button type="submit" disabled={loading}>
+                      {loading ? 'Menyimpan...' : editingService ? 'Update' : 'Simpan'}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Services List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {services.map((service) => (
+                <Card key={service.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="text-2xl">{service.icon}</div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                          <div className="text-lg font-bold text-blue-600">{service.price}</div>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEditService(service)}
+                          className="p-2 rounded-full hover:bg-gray-100"
+                        >
+                          <PencilIcon className="h-4 w-4 text-gray-600" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteService(service.id)}
+                          className="p-2 rounded-full hover:bg-gray-100"
+                        >
+                          <TrashIcon className="h-4 w-4 text-red-600" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">{service.description}</p>
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-2">Fitur:</h4>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        {service.features.map((feature, index) => (
+                          <li key={index} className="flex items-start">
+                            <span className="text-green-500 mr-2">•</span>
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {services.length === 0 && (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <p className="text-gray-600">Belum ada layanan. Tambahkan layanan pertama Anda.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Contacts Tab */}
+        {activeTab === 'contacts' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Manage Informasi Kontak</h2>
+              <Button
+                onClick={() => setShowContactForm(true)}
+                className="flex items-center space-x-2"
+              >
+                <PlusIcon className="h-4 w-4" />
+                <span>Tambah Kontak</span>
+              </Button>
+            </div>
+
+            {/* Contact Form */}
+            {showContactForm && (
+              <Card className="mb-8">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <h3 className="text-lg font-semibold">
+                    {editingContact ? 'Edit Kontak' : 'Tambah Kontak'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowContactForm(false);
+                      setEditingContact(null);
+                      setContactForm({
+                        type: 'email',
+                        label: '',
+                        value: '',
+                        icon: '',
+                        is_primary: false,
+                        is_active: true,
+                        order_index: 0
+                      });
+                    }}
+                  >
+                    <XMarkIcon className="h-6 w-6 text-gray-400" />
+                  </button>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleContactSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Tipe Kontak
+                        </label>
+                        <select
+                          value={contactForm.type}
+                          onChange={(e) => setContactForm(prev => ({ 
+                            ...prev, 
+                            type: e.target.value as ContactInformation['type'] 
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                          required
+                        >
+                          <option value="email">Email</option>
+                          <option value="phone">Phone</option>
+                          <option value="whatsapp">WhatsApp</option>
+                          <option value="instagram">Instagram</option>
+                          <option value="facebook">Facebook</option>
+                          <option value="twitter">Twitter</option>
+                          <option value="linkedin">LinkedIn</option>
+                          <option value="youtube">YouTube</option>
+                          <option value="website">Website</option>
+                          <option value="address">Alamat</option>
+                          <option value="other">Lainnya</option>
+                        </select>
+                      </div>
+                      <Input
+                        label="Label"
+                        value={contactForm.label}
+                        onChange={(e) => setContactForm(prev => ({ ...prev, label: e.target.value }))}
+                        placeholder="Email Utama"
+                        required
+                      />
+                    </div>
+                    <Input
+                      label="Nilai/Nomor/URL"
+                      value={contactForm.value}
+                      onChange={(e) => setContactForm(prev => ({ ...prev, value: e.target.value }))}
+                      placeholder="info@orbwebstudio.com atau +62 812-3456-7890"
+                      required
+                    />
+                    <Input
+                      label="Icon (Emoji atau Unicode)"
+                      value={contactForm.icon}
+                      onChange={(e) => setContactForm(prev => ({ ...prev, icon: e.target.value }))}
+                      placeholder="📧 atau 🌐"
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="is_primary"
+                          checked={contactForm.is_primary}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, is_primary: e.target.checked }))}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <label htmlFor="is_primary" className="text-sm font-medium text-gray-700">
+                          Primary Contact
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="is_active"
+                          checked={contactForm.is_active}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+                          Aktif
+                        </label>
+                      </div>
+                      <Input
+                        label="Urutan"
+                        type="number"
+                        value={contactForm.order_index}
+                        onChange={(e) => setContactForm(prev => ({ ...prev, order_index: parseInt(e.target.value) || 0 }))}
+                        placeholder="0"
+                      />
+                    </div>
+                    <Button type="submit" disabled={loading}>
+                      {loading ? 'Menyimpan...' : editingContact ? 'Update' : 'Simpan'}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Contacts List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {contacts.map((contact) => (
+                <Card key={contact.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="text-2xl">{contact.icon || '📞'}</div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{contact.label}</h3>
+                          <div className="text-sm text-gray-600">{contact.value}</div>
+                          <div className="flex items-center space-x-2 mt-1">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              contact.type === 'email' ? 'bg-blue-100 text-blue-800' :
+                              contact.type === 'phone' || contact.type === 'whatsapp' ? 'bg-green-100 text-green-800' :
+                              contact.type === 'instagram' ? 'bg-pink-100 text-pink-800' :
+                              contact.type === 'facebook' ? 'bg-blue-100 text-blue-800' :
+                              contact.type === 'website' ? 'bg-purple-100 text-purple-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {contact.type}
+                            </span>
+                            {contact.is_primary && (
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Primary
+                              </span>
+                            )}
+                            {!contact.is_active && (
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEditContact(contact)}
+                          className="p-2 rounded-full hover:bg-gray-100"
+                        >
+                          <PencilIcon className="h-4 w-4 text-gray-600" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteContact(contact.id)}
+                          className="p-2 rounded-full hover:bg-gray-100"
+                        >
+                          <TrashIcon className="h-4 w-4 text-red-600" />
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {contacts.length === 0 && (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <p className="text-gray-600">Belum ada informasi kontak. Tambahkan kontak pertama Anda.</p>
                 </CardContent>
               </Card>
             )}

@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  DevicePhoneMobileIcon,
-  GlobeAltIcon,
-  PresentationChartBarIcon,
-  CheckCircleIcon,
   EyeIcon,
   StarIcon,
   SparklesIcon,
@@ -12,32 +8,20 @@ import {
   CogIcon
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabase';
-import { Showcase } from '../types';
+import { Showcase, ContactInformation } from '../types';
 
 export const Home: React.FC = () => {
   const [showcases, setShowcases] = useState<Showcase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [heroContacts, setHeroContacts] = useState<{
+    whatsapp?: ContactInformation;
+    email?: ContactInformation;
+  }>({});
 
-  const features = [
-    {
-      icon: <DevicePhoneMobileIcon className="h-8 w-8" />,
-      title: 'Responsive Design',
-      description: 'Website yang tampil sempurna di semua perangkat'
-    },
-    {
-      icon: <GlobeAltIcon className="h-8 w-8" />,
-      title: 'SEO Optimized',
-      description: 'Mudah ditemukan di Google dan search engine lainnya'
-    },
-    {
-      icon: <PresentationChartBarIcon className="h-8 w-8" />,
-      title: 'Analytics Ready',
-      description: 'Siap terintegrasi dengan Google Analytics'
-    }
-  ];
 
   useEffect(() => {
     fetchFeaturedShowcases();
+    fetchHeroContacts();
   }, []);
 
   const fetchFeaturedShowcases = async () => {
@@ -56,6 +40,33 @@ export const Home: React.FC = () => {
       console.error('Error fetching showcases:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHeroContacts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_information')
+        .select('*')
+        .eq('is_active', true)
+        .in('type', ['whatsapp', 'email'])
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+      
+      // Organize contacts by type
+      const contacts: { whatsapp?: ContactInformation; email?: ContactInformation } = {};
+      data?.forEach(contact => {
+        if (contact.type === 'whatsapp') {
+          contacts.whatsapp = contact;
+        } else if (contact.type === 'email') {
+          contacts.email = contact;
+        }
+      });
+      
+      setHeroContacts(contacts);
+    } catch (error) {
+      console.error('Error fetching hero contacts:', error);
     }
   };
 
@@ -479,14 +490,43 @@ export const Home: React.FC = () => {
           {/* Contact Info */}
           <div className="mt-16 pt-12 border-t border-white/20">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+              {/* WhatsApp */}
               <div className="text-blue-200">
-                <div className="text-2xl font-bold text-white mb-2">WhatsApp</div>
-                <p className="text-lg">+62 812-3456-7890</p>
+                <div className="text-2xl font-bold text-white mb-2">
+                  {heroContacts.whatsapp?.label || 'WhatsApp'}
+                </div>
+                {heroContacts.whatsapp ? (
+                  <a 
+                    href={`https://wa.me/${heroContacts.whatsapp.value.replace(/[^\d]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-lg hover:text-white transition-colors"
+                  >
+                    {heroContacts.whatsapp.value}
+                  </a>
+                ) : (
+                  <p className="text-lg">+62 812-3456-7890</p>
+                )}
               </div>
+              
+              {/* Email */}
               <div className="text-blue-200">
-                <div className="text-2xl font-bold text-white mb-2">Email</div>
-                <p className="text-lg">hello@orbwebstudio.com</p>
+                <div className="text-2xl font-bold text-white mb-2">
+                  {heroContacts.email?.label || 'Email'}
+                </div>
+                {heroContacts.email ? (
+                  <a 
+                    href={`mailto:${heroContacts.email.value}`}
+                    className="text-lg hover:text-white transition-colors"
+                  >
+                    {heroContacts.email.value}
+                  </a>
+                ) : (
+                  <p className="text-lg">hello@orbwebstudio.com</p>
+                )}
               </div>
+              
+              {/* Response Time */}
               <div className="text-blue-200">
                 <div className="text-2xl font-bold text-white mb-2">Response Time</div>
                 <p className="text-lg">{'<'} 2 Jam (Hari Kerja)</p>

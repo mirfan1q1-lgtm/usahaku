@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   CheckCircleIcon, 
@@ -7,9 +7,45 @@ import {
   DocumentTextIcon,
   PhotoIcon
 } from '@heroicons/react/24/outline';
+import { supabase } from '../lib/supabase';
+import { Service } from '../types';
 
 export const Services: React.FC = () => {
-  const services = [
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
+  const fetchServices = async () => {
+    try {
+      setLoading(true);
+      console.log('Fetching services from database...');
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      console.log('Services fetch result:', { data, error, count: data?.length });
+
+      if (error) {
+        console.error('Database error:', error);
+        // Don't throw error, just use fallback data
+        setServices([]);
+      } else {
+        setServices(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching services:', error);
+      setServices([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fallback hardcoded services if database is empty
+  const fallbackServices = [
     {
       id: 'landing',
       name: 'Landing Page',
@@ -97,6 +133,39 @@ export const Services: React.FC = () => {
     }
   ];
 
+  // Use database services if available, otherwise use fallback
+  const displayServices = services.length > 0 ? services : fallbackServices;
+
+  // Type guard to check if service has fallback properties
+  const hasFallbackProperties = (service: any): service is typeof fallbackServices[0] => {
+    return 'timeline' in service && 'ideal' in service;
+  };
+
+  // Helper function to get icon component from string
+  const getIconComponent = (iconString: string) => {
+    switch (iconString) {
+      case '🚀':
+        return <GlobeAltIcon className="h-12 w-12" />;
+      case '🏢':
+        return <DocumentTextIcon className="h-12 w-12" />;
+      case '🎨':
+        return <PhotoIcon className="h-12 w-12" />;
+      default:
+        return <span className="text-4xl">{iconString}</span>;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading services...</p>
+        </div>
+      </div>
+    );
+  }
+
   const additionalServices = [
     {
       name: 'Maintenance & Support',
@@ -136,16 +205,16 @@ export const Services: React.FC = () => {
 
         {/* Main Services */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-20">
-          {services.map((service) => (
+          {displayServices.map((service) => (
             <div 
               key={service.id} 
               className={`relative bg-white rounded-xl shadow-lg border-2 p-8 ${
-                service.popular 
+                hasFallbackProperties(service) && service.popular 
                   ? 'border-blue-500 transform scale-105' 
                   : 'border-gray-200 hover:border-blue-300'
               } transition-all duration-200`}
             >
-              {service.popular && (
+              {hasFallbackProperties(service) && service.popular && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                   <span className="bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium">
                     PALING POPULER
@@ -155,7 +224,7 @@ export const Services: React.FC = () => {
 
               <div className="text-center mb-6">
                 <div className="text-blue-600 flex justify-center mb-4">
-                  {service.icon}
+                  {typeof service.icon === 'string' ? getIconComponent(service.icon) : service.icon}
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">
                   {service.name}
@@ -170,43 +239,63 @@ export const Services: React.FC = () => {
 
               {/* Features */}
               <div className="mb-6">
-                <h4 className="font-semibold text-gray-900 mb-3">Yang Anda Dapatkan:</h4>
-                <ul className="space-y-2 mb-4">
-                  {service.features.included.map((feature, index) => (
-                    <li key={index} className="flex items-start">
-                      <CheckCircleIcon className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm text-gray-600">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
+                {Array.isArray(service.features) ? (
+                  // Database service - simple features array
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-3">Fitur Utama:</h4>
+                    <ul className="space-y-2">
+                      {service.features.map((feature, index) => (
+                        <li key={index} className="flex items-start">
+                          <CheckCircleIcon className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm text-gray-600">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  // Fallback service - detailed features object
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-3">Yang Anda Dapatkan:</h4>
+                    <ul className="space-y-2 mb-4">
+                      {service.features.included.map((feature, index) => (
+                        <li key={index} className="flex items-start">
+                          <CheckCircleIcon className="h-5 w-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm text-gray-600">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
 
-                <h4 className="font-semibold text-gray-900 mb-3">Tidak Termasuk:</h4>
-                <ul className="space-y-2">
-                  {service.features.notIncluded.map((feature, index) => (
-                    <li key={index} className="flex items-start">
-                      <XCircleIcon className="h-5 w-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm text-gray-500">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
+                    <h4 className="font-semibold text-gray-900 mb-3">Tidak Termasuk:</h4>
+                    <ul className="space-y-2">
+                      {service.features.notIncluded.map((feature, index) => (
+                        <li key={index} className="flex items-start">
+                          <XCircleIcon className="h-5 w-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm text-gray-500">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
-              {/* Timeline & Ideal For */}
-              <div className="border-t border-gray-200 pt-6 mb-6">
-                <div className="mb-3">
-                  <span className="font-semibold text-gray-900">Timeline: </span>
-                  <span className="text-gray-600">{service.timeline}</span>
+              {/* Timeline & Ideal For - Only show for fallback services */}
+              {hasFallbackProperties(service) && service.timeline && service.ideal && (
+                <div className="border-t border-gray-200 pt-6 mb-6">
+                  <div className="mb-3">
+                    <span className="font-semibold text-gray-900">Timeline: </span>
+                    <span className="text-gray-600">{service.timeline}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-900">Cocok untuk: </span>
+                    <span className="text-gray-600">{service.ideal}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-semibold text-gray-900">Cocok untuk: </span>
-                  <span className="text-gray-600">{service.ideal}</span>
-                </div>
-              </div>
+              )}
 
               <Link
                 to="/contact"
                 className={`block w-full text-center py-3 rounded-lg font-medium transition-colors duration-200 ${
-                  service.popular
+                  hasFallbackProperties(service) && service.popular
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
                 }`}
