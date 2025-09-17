@@ -9,6 +9,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabase';
 import { Service } from '../types';
+import { SEO, seoConfig } from '../components/SEO';
+import { getServiceStructuredData, getBreadcrumbStructuredData } from '../lib/structuredData';
 
 export const Services: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
@@ -190,7 +192,18 @@ export const Services: React.FC = () => {
   ];
 
   return (
-    <div className="py-20">
+    <>
+      <SEO
+        {...seoConfig.services}
+        structuredData={[
+          getBreadcrumbStructuredData([
+            { name: 'Home', url: '/' },
+            { name: 'Services', url: '/services' }
+          ]),
+          ...services.map(service => getServiceStructuredData(service))
+        ]}
+      />
+      <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-16">
@@ -361,6 +374,7 @@ export const Services: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

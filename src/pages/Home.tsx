@@ -9,6 +9,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabase';
 import { Showcase, ContactInformation } from '../types';
+import { SEO, seoConfig } from '../components/SEO';
+import { getOrganizationStructuredData, getWebsiteStructuredData, getLocalBusinessStructuredData } from '../lib/structuredData';
 
 export const Home: React.FC = () => {
   const [showcases, setShowcases] = useState<Showcase[]>([]);
@@ -71,7 +73,16 @@ export const Home: React.FC = () => {
   };
 
   return (
-    <div className="overflow-hidden">
+    <>
+      <SEO
+        {...seoConfig.home}
+        structuredData={[
+          getOrganizationStructuredData(),
+          getWebsiteStructuredData(),
+          getLocalBusinessStructuredData()
+        ]}
+      />
+      <div className="overflow-hidden">
       {/* Hero Section - Full Screen */}
       <section className="min-h-screen flex items-center relative bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
         {/* Animated Background */}
@@ -535,6 +546,7 @@ export const Home: React.FC = () => {
           </div>
         </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 };

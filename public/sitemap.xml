@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  
+  <!-- Home Page -->
+  <url>
+    <loc>https://orbwebstudio.com/</loc>
+    <lastmod>2024-12-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://orbwebstudio.com/og-image.jpg</image:loc>
+      <image:title>OrbWeb Studio - Jasa Pembuatan Website Profesional</image:title>
+      <image:caption>OrbWeb Studio menyediakan jasa pembuatan website profesional, template website, dan solusi digital untuk bisnis Anda</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Services Page -->
+  <url>
+    <loc>https://orbwebstudio.com/services</loc>
+    <lastmod>2024-12-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://orbwebstudio.com/services-og.jpg</image:loc>
+      <image:title>Paket Layanan Website - OrbWeb Studio</image:title>
+      <image:caption>Pilih paket layanan website yang sesuai dengan kebutuhan bisnis Anda</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Portfolio Page -->
+  <url>
+    <loc>https://orbwebstudio.com/portfolio</loc>
+    <lastmod>2024-12-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://orbwebstudio.com/portfolio-og.jpg</image:loc>
+      <image:title>Portfolio Website - OrbWeb Studio</image:title>
+      <image:caption>Lihat portfolio website yang telah kami buat untuk berbagai klien</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Showcase Page -->
+  <url>
+    <loc>https://orbwebstudio.com/showcase</loc>
+    <lastmod>2024-12-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://orbwebstudio.com/showcase-og.jpg</image:loc>
+      <image:title>Template Website - OrbWeb Studio</image:title>
+      <image:caption>Beli template website siap pakai dengan desain modern dan responsive</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Contact Page -->
+  <url>
+    <loc>https://orbwebstudio.com/contact</loc>
+    <lastmod>2024-12-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <image:image>
+      <image:loc>https://orbwebstudio.com/contact-og.jpg</image:loc>
+      <image:title>Kontak Kami - OrbWeb Studio</image:title>
+      <image:caption>Hubungi OrbWeb Studio untuk konsultasi pembuatan website</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Admin Page (Optional - can be excluded for security) -->
+  <url>
+    <loc>https://orbwebstudio.com/admin</loc>
+    <lastmod>2024-12-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+</urlset>

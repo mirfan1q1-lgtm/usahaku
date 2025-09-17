@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { supabase } from '../lib/supabase';
+import { SEO, seoConfig } from '../components/SEO';
+import { getBreadcrumbStructuredData } from '../lib/structuredData';
 import { EyeIcon, StarIcon } from '@heroicons/react/24/outline';
 
 interface Showcase {
@@ -86,7 +88,17 @@ export const Showcase: React.FC = () => {
   }
 
   return (
-    <div className="py-16">
+    <>
+      <SEO
+        {...seoConfig.showcase}
+        structuredData={[
+          getBreadcrumbStructuredData([
+            { name: 'Home', url: '/' },
+            { name: 'Showcase', url: '/showcase' }
+          ])
+        ]}
+      />
+      <div className="py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-16">
@@ -221,6 +233,7 @@ export const Showcase: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

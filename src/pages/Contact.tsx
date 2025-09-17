@@ -5,6 +5,8 @@ import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { supabase } from '../lib/supabase';
 import { Showcase, ContactInformation } from '../types';
+import { SEO, seoConfig } from '../components/SEO';
+import { getBreadcrumbStructuredData, getFAQStructuredData } from '../lib/structuredData';
 import { 
   MapPinIcon, 
   PhoneIcon, 
@@ -253,8 +255,34 @@ export const Contact: React.FC = () => {
     );
   }
 
+  const faqData = [
+    {
+      question: "Berapa lama waktu pengerjaan website?",
+      answer: "Waktu pengerjaan bervariasi tergantung kompleksitas proyek. Website company profile biasanya 1-2 minggu, e-commerce 2-4 minggu, dan custom development 4-8 minggu."
+    },
+    {
+      question: "Apakah website sudah termasuk hosting dan domain?",
+      answer: "Ya, paket website kami sudah termasuk hosting dan domain untuk 1 tahun pertama. Setelah itu, Anda bisa memperpanjang sendiri atau menggunakan layanan kami."
+    },
+    {
+      question: "Bisakah website diubah setelah selesai?",
+      answer: "Tentu saja! Kami memberikan training singkat untuk mengelola konten website. Untuk perubahan desain besar, tersedia layanan maintenance dengan harga khusus."
+    }
+  ];
+
   return (
-    <div className="py-20">
+    <>
+      <SEO
+        {...seoConfig.contact}
+        structuredData={[
+          getBreadcrumbStructuredData([
+            { name: 'Home', url: '/' },
+            { name: 'Contact', url: '/contact' }
+          ]),
+          getFAQStructuredData(faqData)
+        ]}
+      />
+      <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-16">
@@ -521,6 +549,7 @@ export const Contact: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

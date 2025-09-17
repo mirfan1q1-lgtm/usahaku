@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Portfolio as PortfolioType } from '../types';
 import { supabase } from '../lib/supabase';
+import { SEO, seoConfig } from '../components/SEO';
+import { getPortfolioStructuredData, getBreadcrumbStructuredData } from '../lib/structuredData';
 import { EyeIcon } from '@heroicons/react/24/outline';
 
 export const Portfolio: React.FC = () => {
@@ -65,7 +67,18 @@ export const Portfolio: React.FC = () => {
   }
 
   return (
-    <div className="py-20">
+    <>
+      <SEO
+        {...seoConfig.portfolio}
+        structuredData={[
+          getBreadcrumbStructuredData([
+            { name: 'Home', url: '/' },
+            { name: 'Portfolio', url: '/portfolio' }
+          ]),
+          ...portfolios.map(portfolio => getPortfolioStructuredData(portfolio))
+        ]}
+      />
+      <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-16">
@@ -196,6 +209,7 @@ export const Portfolio: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
